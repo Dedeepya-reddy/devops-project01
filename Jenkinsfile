@@ -8,6 +8,7 @@ pipeline {
                 sh 'test -f app.py'
                 sh 'test -f requirements.txt'
                 sh 'test -f Dockerfile'
+
                 echo 'All required project files exist!'
             }
         }
@@ -29,7 +30,10 @@ pipeline {
                     cleanup() {
                         docker rm -f "$APP_CONTAINER" >/dev/null 2>&1 || true
                     }
+
                     trap cleanup EXIT
+
+                    echo "Starting application container..."
 
                     docker run -d \
                         --name "$APP_CONTAINER" \
@@ -37,14 +41,17 @@ pipeline {
                         hello-devops:${BUILD_NUMBER}
 
                     ATTEMPT=1
+                    RESPONSE=""
+
+                    echo "Waiting for Flask application..."
 
                     while [ "$ATTEMPT" -le 15 ]; do
-                        if docker run --rm \
+                        if RESPONSE=$(docker run --rm \
                             --network "$TEST_NETWORK" \
                             curlimages/curl:latest \
                             -fsS --connect-timeout 2 \
                             "http://${APP_CONTAINER}:5000/" \
-                            -o response.txt; then
+                            2>/dev/null); then
                             break
                         fi
 
@@ -58,14 +65,34 @@ pipeline {
                         sleep 2
                     done
 
-                    grep -Fx \
-                        'Hello, Everyone! My first project is running.' \
-                        response.txt
+                    echo "Application response: $RESPONSE"
 
-                    echo 'Application test passed!'
+                    EXPECTED="Hello, Everyone! My first project is running."
+
+                    if [ "$RESPONSE" != "$EXPECTED" ]; then
+                        echo "Application test failed!"
+                        exit 1
+                    fi
+
+                    echo "Application test passed!"
                 '''
             }
         }
     }
+
+    post {
+        success {
+            echo 'SUCCESS: Build and application test completed!'
+        }
+
+        failure {
+            echo 'FAILURE: Check the Console Output for details.'
+        }
+
+        always {
+            echo 'Pipeline execution finished.'
+        }
+    }
 }
+
 
