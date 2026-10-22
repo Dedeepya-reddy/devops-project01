@@ -3,12 +3,6 @@ pipeline {
     agent any
 
     stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
-        }
-
         stage('Check Project Files') {
             steps {
                 sh 'test -f app.py'
@@ -27,27 +21,36 @@ pipeline {
         stage('Test Application') {
             steps {
                 sh '''
-                    docker run -d --rm \
-                      --name hello-devops-ci-${BUILD_NUMBER} \
-                      -p 127.0.0.1:5002:5000 \
-                      hello-devops:${BUILD_NUMBER}
-                '''
-                sh '''
-                    trap 'docker stop hello-devops-ci-${BUILD_NUMBER} >/dev/null 2>&1 || true' EXIT
+                    set -eu
 
-                    for i in $(seq 1 15); do
-                        if curl -fsS http://127.0.0.1:5002/ -o response.txt; then
-                            break
-                        fi
-                        sleep 2
-                    done
+                    APP_CONTAINER="hello-devops-ci-${BUILD_NUMBER}"
+                    TEST_NETWORK="jenkins"
 
-                    grep -Fx 'Hello, Everyone! My first project is running.' response.txt
+                    cleanup() {
+                        docker rm -f "$APP_CONTAINER" >/dev/null 2>&1 || true
+                    }
+                    trap cleanup EXIT
+
+                    docker run -d \
+                        --name "$APP_CONTAINER" \
+                        --network "$TEST_NETWORK" \
+                        hello-devops:${BUILD_NUMBER}
+
+                    docker run --rm \
+                        --network "$TEST_NETWORK" \
+                        curlimages/curl:latest \
+                        -fsS --retry 10 --retry-connrefused --retry-delay 2 \
+                        "http://${APP_CONTAINER}:5000/" \
+                        -o /tmp/response.txt
+
+                    grep -Fx \
+                        'Hello, Everyone! My first project is running.' \
+                        /tmp/response.txt
+
+                    echo 'Application test passed!'
                 '''
-                echo 'Application test passed!'
             }
         }
     }
 }
-
 
