@@ -117,10 +117,13 @@ pipeline {
                             --cluster=devops-lab \
                             --user=jenkins-deployer \
                             --namespace=default
-
+                        kubectl patch deployment hello-devops --type=strategic \
+                            -p '{"spec":{"template":{"spec":{"containers":[{"name":"hello-devops","imagePullPolicy":"IfNotPresent"}]}}}}'
                         kubectl config use-context jenkins-deploy
 
                         kubectl get deployment hello-devops
+                        kubectl patch deployment hello-devops --type=strategic \
+    -p '{"spec":{"template":{"spec":{"containers":[{"name":"hello-devops","imagePullPolicy":"IfNotPresent"}]}}}}'
 
                         kubectl set image deployment/hello-devops \
                             hello-devops="kind-registry:5000/hello-devops:${BUILD_NUMBER}"
