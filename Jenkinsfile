@@ -1,4 +1,3 @@
-
 pipeline {
     agent any
 
@@ -8,7 +7,6 @@ pipeline {
                 sh 'test -f app.py'
                 sh 'test -f requirements.txt'
                 sh 'test -f Dockerfile'
-
                 echo 'All required project files exist!'
             }
         }
@@ -30,11 +28,9 @@ pipeline {
                     cleanup() {
                         docker rm -f "$APP_CONTAINER" >/dev/null 2>&1 || true
                     }
-
                     trap cleanup EXIT
 
                     echo "Starting application container..."
-
                     docker run -d \
                         --name "$APP_CONTAINER" \
                         --network "$TEST_NETWORK" \
@@ -42,8 +38,6 @@ pipeline {
 
                     ATTEMPT=1
                     RESPONSE=""
-
-                    echo "Waiting for Flask application..."
 
                     while [ "$ATTEMPT" -le 15 ]; do
                         if RESPONSE=$(docker run --rm \
@@ -65,9 +59,8 @@ pipeline {
                         sleep 2
                     done
 
-                    echo "Application response: $RESPONSE"
-
                     EXPECTED="Hello, Everyone! My first project is running."
+                    echo "Application response: $RESPONSE"
 
                     if [ "$RESPONSE" != "$EXPECTED" ]; then
                         echo "Application test failed!"
@@ -78,11 +71,73 @@ pipeline {
                 '''
             }
         }
+
+        stage('Push Docker Image') {
+            steps {
+                sh '''
+                    set -eu
+
+                    REGISTRY_IMAGE="host.docker.internal:5001/hello-devops:${BUILD_NUMBER}"
+
+                    docker tag "hello-devops:${BUILD_NUMBER}" "$REGISTRY_IMAGE"
+                    docker push "$REGISTRY_IMAGE"
+                '''
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'kubernetes-deployer-token',
+                        variable: 'KUBE_TOKEN'
+                    ),
+                    file(
+                        credentialsId: 'kubernetes-ca-cert',
+                        variable: 'KUBE_CA'
+                    )
+                ]) {
+                    sh '''
+                        set +x
+                        set -eu
+
+                        KUBE_TMP="$(mktemp -d)"
+                        trap 'rm -rf "$KUBE_TMP"' EXIT
+                        export KUBECONFIG="$KUBE_TMP/config"
+
+                        kubectl config set-cluster devops-lab \
+                            --server=https://172.19.0.5:6443 \
+                            --certificate-authority="$KUBE_CA" \
+                            --embed-certs=true
+
+                        kubectl config set-credentials jenkins-deployer \
+                            --token="$KUBE_TOKEN"
+
+                        kubectl config set-context jenkins-deploy \
+                            --cluster=devops-lab \
+                            --user=jenkins-deployer \
+                            --namespace=default
+
+                        kubectl config use-context jenkins-deploy
+
+                        kubectl get deployment hello-devops
+
+                        kubectl set image deployment/hello-devops \
+                            hello-devops="kind-registry:5000/hello-devops:${BUILD_NUMBER}"
+
+                        kubectl rollout status deployment/hello-devops \
+                            --timeout=120s
+
+                        echo "Kubernetes deployment completed successfully."
+                    '''
+                }
+            }
+        }
     }
 
     post {
         success {
-            echo 'SUCCESS: Build and application test completed!'
+            echo 'SUCCESS: Build, test, push, and deployment completed!'
         }
 
         failure {
@@ -94,5 +149,3 @@ pipeline {
         }
     }
 }
-
-
