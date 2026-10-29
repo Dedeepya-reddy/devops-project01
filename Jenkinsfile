@@ -99,6 +99,8 @@ pipeline {
                 ]) {
                     sh '''
                         set +x
+                                                unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
+export NO_PROXY="172.19.0.5,localhost,127.0.0.1"
                         set -eu
 
                         KUBE_TMP="$(mktemp -d)"
