@@ -126,6 +126,12 @@ pipeline {
                             -p '{"spec":{"template":{"spec":{"containers":[{"name":"hello-devops","imagePullPolicy":"IfNotPresent"}]}}}}'
                         kubectl config use-context jenkins-deploy
 
+                        echo "Testing authenticated Kubernetes API with curl:"
+                        curl --noproxy '*' --cacert "$KUBE_CA" -H "Authorization: Bearer $KUBE_TOKEN" -sS https://172.19.0.5:6443/version
+
+                        echo "Testing Kubernetes API with kubectl:"
+                        kubectl get --raw=/version
+
                         kubectl get deployment hello-devops
                         kubectl patch deployment hello-devops --type=strategic \
     -p '{"spec":{"template":{"spec":{"containers":[{"name":"hello-devops","imagePullPolicy":"IfNotPresent"}]}}}}'
