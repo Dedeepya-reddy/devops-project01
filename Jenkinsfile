@@ -1,3 +1,4 @@
+
 pipeline {
     agent any
 
@@ -31,6 +32,7 @@ pipeline {
                     trap cleanup EXIT
 
                     echo "Starting application container..."
+
                     docker run -d \
                         --name "$APP_CONTAINER" \
                         --network "$TEST_NETWORK" \
@@ -60,6 +62,7 @@ pipeline {
                     done
 
                     EXPECTED="Hello, Everyone! My first project is running."
+
                     echo "Application response: $RESPONSE"
 
                     if [ "$RESPONSE" != "$EXPECTED" ]; then
@@ -99,16 +102,22 @@ pipeline {
                 ]) {
                     sh '''
                         set +x
-                        unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
+                        set -eu
+
+                        unset HTTP_PROXY HTTPS_PROXY ALL_PROXY
+                        unset http_proxy https_proxy all_proxy
+
                         export NO_PROXY="172.19.0.5,localhost,127.0.0.1"
                         export no_proxy="$NO_PROXY"
-                        set -eu
 
                         echo "Proxy environment check:"
                         env | grep -i proxy | cut -d= -f1 || true
+
                         KUBE_TMP="$(mktemp -d)"
                         trap 'rm -rf "$KUBE_TMP"' EXIT
                         export KUBECONFIG="$KUBE_TMP/config"
+
+                        echo "Configuring Kubernetes cluster..."
 
                         kubectl config set-cluster devops-lab \
                             --server=https://172.19.0.5:6443 \
@@ -122,22 +131,38 @@ pipeline {
                             --cluster=devops-lab \
                             --user=jenkins-deployer \
                             --namespace=default
-                        kubectl patch deployment hello-devops --type=strategic \
-                            -p '{"spec":{"template":{"spec":{"containers":[{"name":"hello-devops","imagePullPolicy":"IfNotPresent"}]}}}}'
+
                         kubectl config use-context jenkins-deploy
 
                         echo "Testing authenticated Kubernetes API with curl:"
-                        curl --noproxy '*' --cacert "$KUBE_CA" -H "Authorization: Bearer $KUBE_TOKEN" -sS https://172.19.0.5:6443/version
+
+                        curl --noproxy '*' \
+                            --cacert "$KUBE_CA" \
+                            -H "Authorization: Bearer $KUBE_TOKEN" \
+                            -sS \
+                            -w "\\nHTTP status: %{http_code}\\nContent type: %{content_type}\\n" \
+                            https://172.19.0.5:6443/version
 
                         echo "Testing Kubernetes API with kubectl:"
+
                         kubectl get --raw=/version
 
+                        echo "Checking existing deployment:"
+
                         kubectl get deployment hello-devops
-                        kubectl patch deployment hello-devops --type=strategic \
-    -p '{"spec":{"template":{"spec":{"containers":[{"name":"hello-devops","imagePullPolicy":"IfNotPresent"}]}}}}'
+
+                        echo "Setting image pull policy..."
+
+                        kubectl patch deployment hello-devops \
+                            --type=strategic \
+                            -p '{"spec":{"template":{"spec":{"containers":[{"name":"hello-devops","imagePullPolicy":"IfNotPresent"}]}}}}'
+
+                        echo "Updating Kubernetes deployment..."
 
                         kubectl set image deployment/hello-devops \
                             hello-devops="kind-registry:5000/hello-devops:${BUILD_NUMBER}"
+
+                        echo "Waiting for deployment rollout..."
 
                         kubectl rollout status deployment/hello-devops \
                             --timeout=120s
