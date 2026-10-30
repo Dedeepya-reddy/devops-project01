@@ -99,10 +99,13 @@ pipeline {
                 ]) {
                     sh '''
                         set +x
-                                                unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
-export NO_PROXY="172.19.0.5,localhost,127.0.0.1"
+                        unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
+                        export NO_PROXY="172.19.0.5,localhost,127.0.0.1"
+                        export no_proxy="$NO_PROXY"
                         set -eu
 
+                        echo "Proxy environment check:"
+                        env | grep -i proxy | cut -d= -f1 || true
                         KUBE_TMP="$(mktemp -d)"
                         trap 'rm -rf "$KUBE_TMP"' EXIT
                         export KUBECONFIG="$KUBE_TMP/config"
