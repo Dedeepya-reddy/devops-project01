@@ -7,12 +7,5 @@ def home():
     return "Hello, Everyone! My first project is running."
     return "Hello, Everyone! My application is now updated through Jenkins CI/CD!"
 
-
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-
-
-
-
-
