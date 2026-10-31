@@ -61,16 +61,22 @@ pipeline {
                         sleep 2
                     done
 
-                    EXPECTED="Hello, Everyone! My first project is running."
+                    EXPECTED_1="Hello, Everyone! My first project is running."
+                    EXPECTED_2="Hello, Everyone! My application is now updated through Jenkins CI/CD!"
 
                     echo "Application response: $RESPONSE"
 
-                    if [ "$RESPONSE" != "$EXPECTED" ]; then
-                        echo "Application test failed!"
+                    if ! printf '%s' "$RESPONSE" | grep -Fq "$EXPECTED_1"; then
+                        echo "First message missing!"
                         exit 1
                     fi
 
-                    echo "Application test passed!"
+                    if ! printf '%s' "$RESPONSE" | grep -Fq "$EXPECTED_2"; then
+                        echo "Second message missing!"
+                        exit 1
+                    fi
+
+                    echo "Application test passed! Both messages found."
                 '''
             }
         }
